@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> | Mi cuenta</title>
+
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+
+    <style>
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #101828, #243b63);
+            font-family: Arial, sans-serif;
+        }
+
+        main {
+            width: 92%;
+            max-width: 580px;
+            margin: 45px auto;
+        }
+
+        .auth-card {
+            background: white;
+            border-radius: 22px;
+            padding: 35px;
+            box-shadow: 0 20px 50px #0004;
+        }
+
+        .brand {
+            color: #80cbc4;
+            text-align: center;
+            letter-spacing: 3px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+
+        h4 {
+            color: #172b4d;
+            font-weight: bold;
+        }
+
+        .subtitle {
+            color: #64748b;
+            margin-bottom: 25px;
+        }
+
+        .btn {
+            width: 100%;
+            border-radius: 9px;
+            background: #00796b;
+        }
+
+        .bottom-link {
+            text-align: center;
+            margin: 25px 0 0;
+        }
+
+        #message {
+            padding: 12px;
+            border-radius: 8px;
+            background: #ffebee;
+            color: #b71c1c;
+            margin-bottom: 18px;
+        }
+
+        [hidden] {
+            display: none !important;
+        }
+
+        .hint {
+            color: #64748b;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+<main>
+    <p class="brand">MI CUENTA</p>
+
+    <section class="auth-card">
+        <h4><%= title %></h4>
+        <p class="subtitle">
+            <%= mode === "signUp"
+                ? "Completa tus datos para crear tu cuenta."
+                : "Ingresa para acceder a tu espacio personal." %>
+        </p>
+
+        <div id="message" role="alert" hidden></div>
+
+        <form id="authForm">
+            <% if (mode === "signUp") { %>
+                <div class="input-field">
+                    <input id="name" name="name" type="text" required>
+                    <label for="name">Nombres</label>
+                </div>
+
+                <div class="input-field">
+                    <input id="lastName" name="lastName" type="text" required>
+                    <label for="lastName">Apellidos</label>
+                </div>
+
+                <div class="input-field">
+                    <input id="phoneNumber" name="phoneNumber" type="tel" required>
+                    <label for="phoneNumber">Teléfono</label>
+                </div>
+
+                <div class="input-field">
+                    <input id="birthdate" name="birthdate" type="date" required>
+                    <label for="birthdate" class="active">
+                        Fecha de nacimiento
+                    </label>
+                </div>
+            <% } %>
+
+            <div class="input-field">
+                <input id="email" name="email" type="email"
+                       autocomplete="email" required>
+                <label for="email">Correo electrónico</label>
+            </div>
+
+            <div class="input-field">
+                <input id="password" name="password" type="password"
+                       autocomplete="<%= mode === 'signUp'
+                           ? 'new-password' : 'current-password' %>"
+                       required>
+                <label for="password">Contraseña</label>
+            </div>
+
+            <% if (mode === "signUp") { %>
+                <p class="hint">
+                    Mínimo 8 caracteres, una mayúscula, un número
+                    y un símbolo: # $ % & * @
+                </p>
+            <% } %>
+
+            <p>
+                <label>
+                    <input id="showPassword" type="checkbox">
+                    <span>Mostrar contraseña</span>
+                </label>
+            </p>
+
+            <button id="submitButton"
+                    class="btn waves-effect waves-light"
+                    type="submit">
+                <%= mode === "signUp" ? "Crear cuenta" : "Ingresar" %>
+            </button>
+        </form>
+
+        <p class="bottom-link">
+            <% if (mode === "signUp") { %>
+                ¿Ya tienes cuenta?
+                <a href="/signIn">Inicia sesión</a>
+            <% } else { %>
+                ¿Aún no tienes cuenta?
+                <a href="/signUp">Regístrate</a>
+            <% } %>
+        </p>
+    </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+
+<script>
+    const mode = "<%= mode %>";
+    const form = document.getElementById("authForm");
+    const message = document.getElementById("message");
+    const button = document.getElementById("submitButton");
+    const passwordInput = document.getElementById("password");
+
+    document.getElementById("showPassword").addEventListener("change", (event) => {
+        passwordInput.type = event.target.checked ? "text" : "password";
+    });
+
+    if (mode === "signIn" && sessionStorage.getItem("registrationSuccess")) {
+        message.textContent = "Cuenta creada. Ya puedes iniciar sesión.";
+        message.style.background = "#e0f2f1";
+        message.style.color = "#00695c";
+        message.hidden = false;
+        sessionStorage.removeItem("registrationSuccess");
+    }
+
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        message.hidden = true;
+        button.disabled = true;
+
+        try {
+            const data = Object.fromEntries(new FormData(form));
+
+            const response = await fetch("/api/auth/" + mode, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.message || "No se pudo completar la operación.");
+            }
+
+            if (mode === "signUp") {
+                sessionStorage.setItem("registrationSuccess", "true");
+                window.location.replace("/signIn");
+                return;
+            }
+
+            sessionStorage.setItem("token", result.token);
+
+            const destination = result.user.roles.includes("admin")
+                ? "/admin"
+                : "/dashboard";
+
+            window.location.replace(destination);
+        } catch (error) {
+            message.textContent = error.message;
+            message.style.background = "#ffebee";
+            message.style.color = "#b71c1c";
+            message.hidden = false;
+        } finally {
+            button.disabled = false;
+        }
+    });
+</script>
+</body>
+</html>

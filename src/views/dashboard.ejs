@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de usuario | Mi cuenta</title>
+
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+
+    <style>
+        body {
+            background: #eef2f7;
+            color: #172b4d;
+        }
+
+        nav {
+            background: #172b4d;
+            padding: 0 25px;
+        }
+
+        main {
+            max-width: 950px;
+            margin: 45px auto;
+            padding: 0 20px;
+        }
+
+        .welcome {
+            background: linear-gradient(120deg, #172b4d, #00796b);
+            color: white;
+            padding: 35px;
+            border-radius: 20px;
+            margin-bottom: 25px;
+        }
+
+        .card-panel {
+            border-radius: 16px;
+            padding: 30px;
+        }
+
+        .btn {
+            background: #00796b;
+            border-radius: 8px;
+        }
+
+        [hidden] {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body>
+    <nav>
+        <div class="nav-wrapper">
+            <span>MI CUENTA</span>
+            <button id="logout" class="btn right" style="margin-top: 14px;">
+                Cerrar sesión
+            </button>
+        </div>
+    </nav>
+
+    <main>
+        <p id="status" role="status">Comprobando tu sesión…</p>
+
+        <div id="content" hidden>
+            <section class="welcome">
+                <p>PANEL DE USUARIO</p>
+                <h3 id="welcome"></h3>
+                <p>Este es tu espacio para consultar tus datos personales.</p>
+            </section>
+
+            <section class="card-panel">
+                <h5>Resumen de mi cuenta</h5>
+
+                <table class="striped">
+                    <tbody>
+                        <tr>
+                            <th>Nombre completo</th>
+                            <td id="fullName"></td>
+                        </tr>
+                        <tr>
+                            <th>Correo</th>
+                            <td id="email"></td>
+                        </tr>
+                        <tr>
+                            <th>Teléfono</th>
+                            <td id="phone"></td>
+                        </tr>
+                        <tr>
+                            <th>Edad</th>
+                            <td id="age"></td>
+                        </tr>
+                        <tr>
+                            <th>Rol</th>
+                            <td id="roles"></td>
+                        </tr>
+                        <tr>
+                            <th>Fecha de registro</th>
+                            <td id="createdAt"></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        const token = sessionStorage.getItem("token");
+        const status = document.getElementById("status");
+
+        function cerrarSesion() {
+            sessionStorage.removeItem("token");
+            window.location.replace("/signIn");
+        }
+
+        document.getElementById("logout")
+            .addEventListener("click", cerrarSesion);
+
+        async function cargarPanel() {
+            if (!token) {
+                cerrarSesion();
+                return;
+            }
+
+            try {
+                const response = await fetch("/api/users/me", {
+                    headers: {
+                        Authorization: "Bearer " + token
+                    },
+                    cache: "no-store"
+                });
+
+                if (response.status === 401) {
+                    cerrarSesion();
+                    return;
+                }
+
+                const user = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(user.message || "No se pudo cargar el perfil.");
+                }
+
+                // El servidor ya comprobó la firma del token.
+                // Leemos su vencimiento para cerrar la sesión a tiempo.
+                const encoded = token.split(".")[1]
+                    .replace(/-/g, "+")
+                    .replace(/_/g, "/");
+
+                const payload = JSON.parse(atob(encoded));
+                const remaining = payload.exp * 1000 - Date.now();
+
+                if (!Number.isFinite(remaining) || remaining <= 0) {
+                    cerrarSesion();
+                    return;
+                }
+
+                setTimeout(cerrarSesion, Math.min(remaining, 2147483647));
+
+                document.getElementById("welcome").textContent =
+                    "Hola, " + user.name;
+
+                document.getElementById("fullName").textContent =
+                    user.name + " " + user.lastName;
+
+                document.getElementById("email").textContent = user.email;
+                document.getElementById("phone").textContent = user.phoneNumber;
+                document.getElementById("age").textContent = user.age + " años";
+                document.getElementById("roles").textContent = user.roles.join(", ");
+
+                document.getElementById("createdAt").textContent =
+                    new Date(user.createdAt).toLocaleDateString("es-PE");
+
+                status.hidden = true;
+                document.getElementById("content").hidden = false;
+            } catch (error) {
+                status.textContent = error.message;
+            }
+        }
+
+        cargarPanel();
+    </script>
+</body>
+</html>

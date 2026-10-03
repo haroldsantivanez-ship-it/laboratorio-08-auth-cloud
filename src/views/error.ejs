@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= code %> | Mi cuenta</title>
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <style>
+        body {
+            min-height: 100vh;
+            margin: 0;
+            display: grid;
+            place-items: center;
+            background: #172b4d;
+        }
+        main {
+            background: white;
+            border-radius: 22px;
+            padding: 45px;
+            text-align: center;
+            width: 90%;
+            max-width: 600px;
+        }
+        h1 { color: #00796b; font-weight: bold; }
+        h5 { color: #172b4d; }
+        .btn { background: #00796b; margin: 8px; }
+    </style>
+</head>
+<body>
+    <main>
+        <h1><%= code %></h1>
+        <h5><%= title %></h5>
+        <p><%= message %></p>
+        <a href="/dashboard" class="btn">Volver al panel</a>
+        <a href="/signIn" class="btn">Iniciar sesión</a>
+    </main>
+</body>
+</html>

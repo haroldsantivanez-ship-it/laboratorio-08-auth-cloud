@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi perfil | Mi cuenta</title>
+
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+
+    <style>
+        body { background: #eef2f7; color: #172b4d; }
+        main { max-width: 850px; margin: 35px auto; padding: 0 20px; }
+        .card-panel { border-radius: 20px; padding: 30px; }
+        .actions { display: flex; gap: 12px; flex-wrap: wrap; }
+        .btn { background: #00796b; border-radius: 8px; }
+        .avatar {
+            width: 110px;
+            height: 110px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin: 15px 0;
+        }
+        #message { padding: 12px; border-radius: 8px; }
+        [hidden] { display: none !important; }
+    </style>
+</head>
+
+<body>
+<main>
+    <div class="actions">
+        <a href="/dashboard" class="btn">Volver al panel</a>
+        <button id="logout" class="btn blue-grey">Cerrar sesión</button>
+    </div>
+
+    <p id="loading">Comprobando tu sesión…</p>
+
+    <section id="content" class="card-panel" hidden>
+        <h4>Mi cuenta</h4>
+        <p>Consulta y actualiza tus datos personales.</p>
+
+        <img id="photo" class="avatar" alt="Foto de perfil" hidden>
+        <p id="summary"></p>
+        <p id="dates"></p>
+        <p id="message" role="alert" hidden></p>
+
+        <form id="profileForm">
+            <%
+            const fields = [
+                ["name", "Nombres", "text", true],
+                ["lastName", "Apellidos", "text", true],
+                ["email", "Correo electrónico", "email", true],
+                ["phoneNumber", "Teléfono", "tel", true],
+                ["birthdate", "Fecha de nacimiento", "date", true],
+                ["address", "Dirección", "text", false],
+                ["url_profile", "URL de la imagen de perfil", "url", false]
+            ];
+            %>
+
+            <% fields.forEach(([name, label, type, required]) => { %>
+                <div class="input-field">
+                    <input
+                        id="<%= name %>"
+                        name="<%= name %>"
+                        type="<%= type %>"
+                        <%= required ? "required" : "" %>>
+                    <label for="<%= name %>" class="active">
+                        <%= label %>
+                    </label>
+                </div>
+            <% }); %>
+
+            <button id="saveButton" class="btn" type="submit">
+                Guardar cambios
+            </button>
+        </form>
+    </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+
+<script>
+    const token = sessionStorage.getItem("token");
+    const form = document.getElementById("profileForm");
+    const loading = document.getElementById("loading");
+    const message = document.getElementById("message");
+    const saveButton = document.getElementById("saveButton");
+
+    function logout() {
+        sessionStorage.removeItem("token");
+        window.location.replace("/signIn");
+    }
+
+    document.getElementById("logout").addEventListener("click", logout);
+
+    async function requestProfile(method = "GET", data) {
+        const response = await fetch("/api/users/me", {
+            method,
+            headers: {
+                Authorization: "Bearer " + token,
+                "Content-Type": "application/json"
+            },
+            cache: "no-store",
+            body: data ? JSON.stringify(data) : undefined
+        });
+
+        if (response.status === 401) {
+            logout();
+            throw new Error("La sesión ha terminado.");
+        }
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.message || "No se pudo completar la operación.");
+        }
+
+        return result;
+    }
+
+    function showProfile(user) {
+        const fields = [
+            "name", "lastName", "email", "phoneNumber",
+            "birthdate", "address", "url_profile"
+        ];
+
+        fields.forEach((field) => {
+            let value = user[field] || "";
+
+            if (field === "birthdate" && value) {
+                value = value.slice(0, 10);
+            }
+
+            form.elements.namedItem(field).value = value;
+        });
+
+        document.getElementById("summary").textContent =
+            "Edad: " + user.age + " años · Rol: " + user.roles.join(", ");
+
+        document.getElementById("dates").textContent =
+            "Registro: " + new Date(user.createdAt).toLocaleString("es-PE") +
+            " · Actualización: " + new Date(user.updatedAt).toLocaleString("es-PE");
+
+        const photo = document.getElementById("photo");
+        photo.hidden = true;
+        photo.removeAttribute("src");
+
+        if (user.url_profile) {
+            try {
+                const url = new URL(user.url_profile);
+
+                if (["http:", "https:"].includes(url.protocol)) {
+                    photo.onload = () => { photo.hidden = false; };
+                    photo.onerror = () => { photo.hidden = true; };
+                    photo.src = url.href;
+                }
+            } catch {
+                photo.hidden = true;
+            }
+        }
+
+        M.updateTextFields();
+    }
+
+    async function loadProfile() {
+        if (!token) {
+            logout();
+            return;
+        }
+
+        try {
+            const user = await requestProfile();
+
+            const encoded = token.split(".")[1]
+                .replace(/-/g, "+").replace(/_/g, "/");
+
+            const payload = JSON.parse(atob(encoded));
+            const remaining = payload.exp * 1000 - Date.now();
+
+            if (!Number.isFinite(remaining) || remaining <= 0) {
+                logout();
+                return;
+            }
+
+            setTimeout(logout, Math.min(remaining, 2147483647));
+
+            showProfile(user);
+            loading.hidden = true;
+            document.getElementById("content").hidden = false;
+        } catch (error) {
+            loading.textContent = error.message;
+        }
+    }
+
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        saveButton.disabled = true;
+        message.hidden = true;
+
+        try {
+            const data = Object.fromEntries(new FormData(form));
+            const result = await requestProfile("PATCH", data);
+
+            showProfile(result.user);
+            message.textContent = result.message;
+            message.style.background = "#e0f2f1";
+            message.style.color = "#00695c";
+        } catch (error) {
+            message.textContent = error.message;
+            message.style.background = "#ffebee";
+            message.style.color = "#b71c1c";
+        } finally {
+            message.hidden = false;
+            saveButton.disabled = false;
+        }
+    });
+
+    loadProfile();
+</script>
+</body>
+</html>

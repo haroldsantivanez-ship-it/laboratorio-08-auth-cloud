@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administración | Mi cuenta</title>
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <style>
+        body { background: #eef2f7; color: #172b4d; }
+        main { width: 94%; max-width: 1200px; margin: 35px auto; }
+        .card-panel { border-radius: 18px; padding: 25px; }
+        .btn, .btn-small { background: #00796b; border-radius: 7px; }
+        .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+        .table-container { overflow-x: auto; }
+        td { overflow-wrap: anywhere; }
+        [hidden] { display: none !important; }
+    </style>
+</head>
+<body>
+<main>
+    <div class="actions">
+        <a href="/dashboard" class="btn">Panel de usuario</a>
+        <a href="/profile" class="btn">Mi cuenta</a>
+        <button id="logout" class="btn blue-grey">Cerrar sesión</button>
+    </div>
+
+    <p id="status">Comprobando permisos…</p>
+
+    <section id="content" class="card-panel" hidden>
+        <h4>Panel del administrador</h4>
+        <p id="total"></p>
+
+        <div class="table-container">
+            <table class="striped">
+                <thead>
+                    <tr>
+                        <th>Nombre completo</th>
+                        <th>Correo</th>
+                        <th>Teléfono</th>
+                        <th>Rol</th>
+                        <th>Registro</th>
+                        <th>Detalle</th>
+                    </tr>
+                </thead>
+                <tbody id="users"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section id="detail" class="card-panel" hidden>
+        <h5>Información del usuario</h5>
+        <table class="striped">
+            <tbody id="detailRows"></tbody>
+        </table>
+    </section>
+</main>
+
+<script>
+    const token = sessionStorage.getItem("token");
+    const status = document.getElementById("status");
+
+    function logout() {
+        sessionStorage.removeItem("token");
+        window.location.replace("/signIn");
+    }
+
+    document.getElementById("logout").addEventListener("click", logout);
+
+    async function api(url) {
+        const response = await fetch(url, {
+            headers: { Authorization: "Bearer " + token },
+            cache: "no-store"
+        });
+
+        if (response.status === 401) {
+            logout();
+            throw new Error("Sesión finalizada.");
+        }
+
+        if (response.status === 403) {
+            window.location.replace("/403");
+            throw new Error("Acceso denegado.");
+        }
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.message || "No se pudo cargar la información.");
+        }
+
+        return result;
+    }
+
+    function addCell(row, value) {
+        const cell = document.createElement("td");
+        cell.textContent = value ?? "Sin registrar";
+        row.appendChild(cell);
+        return cell;
+    }
+
+    async function viewUser(id) {
+        try {
+            const user = await api("/api/users/" + encodeURIComponent(id));
+            const rows = document.getElementById("detailRows");
+            rows.replaceChildren();
+
+            const fields = [
+                ["Nombres", user.name],
+                ["Apellidos", user.lastName],
+                ["Correo", user.email],
+                ["Teléfono", user.phoneNumber],
+                ["Nacimiento", user.birthdate?.slice(0, 10)],
+                ["Edad", user.age + " años"],
+                ["Dirección", user.address || "Sin registrar"],
+                ["URL de imagen", user.url_profile || "Sin registrar"],
+                ["Roles", user.roles.join(", ")],
+                ["Registro", new Date(user.createdAt).toLocaleString("es-PE")],
+                ["Actualización", new Date(user.updatedAt).toLocaleString("es-PE")]
+            ];
+
+            fields.forEach(([label, value]) => {
+                const row = document.createElement("tr");
+                addCell(row, label);
+                addCell(row, value);
+                rows.appendChild(row);
+            });
+
+            const detail = document.getElementById("detail");
+            detail.hidden = false;
+            detail.scrollIntoView({ behavior: "smooth" });
+        } catch (error) {
+            status.hidden = false;
+            status.textContent = error.message;
+        }
+    }
+
+    async function loadUsers() {
+        if (!token) {
+            logout();
+            return;
+        }
+
+        try {
+            // La API permite esta consulta únicamente al rol admin.
+            const users = await api("/api/users");
+
+            const encoded = token.split(".")[1]
+                .replace(/-/g, "+").replace(/_/g, "/");
+            const payload = JSON.parse(atob(encoded));
+            const remaining = payload.exp * 1000 - Date.now();
+
+            if (!Number.isFinite(remaining) || remaining <= 0) {
+                logout();
+                return;
+            }
+
+            setTimeout(logout, Math.min(remaining, 2147483647));
+
+            document.getElementById("total").textContent =
+                "Usuarios registrados: " + users.length;
+
+            const tbody = document.getElementById("users");
+
+            users.forEach((user) => {
+                const row = document.createElement("tr");
+
+                addCell(row, user.name + " " + user.lastName);
+                addCell(row, user.email);
+                addCell(row, user.phoneNumber);
+                addCell(row, user.roles.join(", "));
+                addCell(row, new Date(user.createdAt).toLocaleDateString("es-PE"));
+
+                const cell = addCell(row, "");
+                const button = document.createElement("button");
+                button.className = "btn-small";
+                button.textContent = "Ver";
+                button.addEventListener("click", () => viewUser(user.id));
+                cell.appendChild(button);
+
+                tbody.appendChild(row);
+            });
+
+            status.hidden = true;
+            document.getElementById("content").hidden = false;
+        } catch (error) {
+            status.textContent = error.message;
+        }
+    }
+
+    loadUsers();
+</script>
+</body>
+</html>

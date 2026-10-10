@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
+import dns from "node:dns";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import seedRoles from "./utils/seedRoles.js";
@@ -36,7 +37,7 @@ app.get("/signUp", (req, res) => {
     res.render("auth", { title: "Crear cuenta", mode: "signUp" });
 });
 
-// Las vistas cargan sus datos mediante la API protegida con JWT.
+// Estas páginas consultan la API usando el token del usuario.
 for (const view of ["dashboard", "profile", "admin"]) {
     app.get("/" + view, (req, res) => {
         res.set("Cache-Control", "no-store");
@@ -53,10 +54,11 @@ app.get("/403", (req, res) => {
 });
 
 app.get("/health", (req, res) => {
-    res.json({ ok: true });
+    res.json({
+        ok: mongoose.connection.readyState === 1
+    });
 });
 
-// Esta parte debe ir después de las rutas existentes.
 app.use((req, res) => {
     if (req.path.startsWith("/api/")) {
         return res.status(404).json({
@@ -89,7 +91,9 @@ app.use((error, req, res, next) => {
 
     const status = error.status || 500;
 
-    if (status >= 500) console.error(error);
+    if (status >= 500) {
+        console.error(error);
+    }
 
     res.status(status).json({
         message: status >= 500
@@ -102,18 +106,29 @@ async function iniciarServidor() {
     try {
         if (!process.env.MONGODB_URI || !process.env.JWT_SECRET) {
             throw new Error(
-                "Falta MONGODB_URI o JWT_SECRET en el archivo .env"
+                "Falta configurar MONGODB_URI o JWT_SECRET."
             );
         }
 
+        // Permite usar los DNS que funcionaron en tu computadora.
+        if (process.env.DNS_SERVERS) {
+            const servers = process.env.DNS_SERVERS
+                .split(",")
+                .map((server) => server.trim())
+                .filter(Boolean);
+
+            dns.setServers(servers);
+        }
+
         await mongoose.connect(process.env.MONGODB_URI);
-        console.log("MongoDB conectado correctamente");
+        console.log("MongoDB Atlas conectado correctamente");
 
         await seedRoles();
         await seedUsers();
 
-        const server = app.listen(PORT, () => {
-            console.log(`Servidor funcionando en http://localhost:${PORT}`);
+        // Escucha en la dirección necesaria para funcionar en Render.
+        const server = app.listen(PORT, "0.0.0.0", () => {
+            console.log(`Servidor iniciado en el puerto ${PORT}`);
         });
 
         server.on("error", (error) => {
@@ -121,7 +136,7 @@ async function iniciarServidor() {
             process.exit(1);
         });
     } catch (error) {
-        console.error("Error:", error.message);
+        console.error("Error al iniciar:", error.message);
         process.exit(1);
     }
 }

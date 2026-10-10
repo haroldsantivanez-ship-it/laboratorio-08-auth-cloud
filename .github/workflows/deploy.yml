@@ -1,0 +1,30 @@
+name: Desplegar JWT en Render
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Iniciar despliegue en Render
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "Falta configurar RENDER_DEPLOY_HOOK_URL"
+            exit 1
+          fi
+
+          curl --fail --silent --show-error \
+            --request POST \
+            --output /dev/null \
+            "$RENDER_DEPLOY_HOOK_URL"
+
+          echo "Solicitud de despliegue enviada a Render"
